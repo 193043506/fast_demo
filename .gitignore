@@ -1,0 +1,22 @@
+# 虚拟环境：体积大、含本机绝对路径，换机器用 requirements.txt 重建即可
+.venv/
+.venv_old_37/
+venv/
+env/
+
+# Python 缓存与编译产物
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# 本机环境变量与密钥，绝不推送
+.env
+.env.*
+*.pem
+
+# 系统与编辑器杂项
+.DS_Store
+Thumbs.db
+.idea/
+*.log
