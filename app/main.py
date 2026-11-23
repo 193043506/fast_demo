@@ -44,11 +44,26 @@ products = [
 
 class ProductCreate(BaseModel):
     """描述新增商品时客户端可以提交的字段。"""
-    category_id: int = Field(gt = 0, description="商品分类的ID，必须是正整数")
+    #有 default = 可选字段；没写 default 的必填  
+    category_id: int = Field(
+        gt = 0, description="商品分类的ID，必须是正整数")
     name: str = Field(min_length=1,max_length=50,description="商品名称，必填，不超过50个字符")
     price: Decimal = Field(ge = 0,decimal_places=2,max_digits=8,description="商品价格，最大保留两位小数")
-    stock: int = Field(default=0,ge=0,description="库存，不小于0")
-    shelf_status: bool = Field(default=True,description="上架状态")
+    stock: int = Field(ge=0,description="库存，不小于0")
+    shelf_status: bool = Field(default=False,description="上架状态")
+
+
+class ProductUpdate(BaseModel):
+    #修改商品的字段
+    """ProductUpdate 是修改用的——PATCH 的语义是"只改我提交的字段"。
+    所以每个字段都必须允许不传，于是全部写成 类型 | None，
+    default None。这里的 None 不代表"把字段改成空"，而是"不要动这个字段的值"。
+    """
+    category_id:int | None = Field(default=None,gt = 0,description = "商品分类的ID，必须是正整数")
+    name: str | None = Field(default=None,min_length=1,max_length=50,description="商品名称，必填，不超过50个字符")
+    price: Decimal | None = Field(default=None,ge = 0,decimal_places=2,max_digits=8,description="商品价格，最大保留两位小数")
+    stock: int | None= Field(default=None,ge=0,description="库存，不小于0")
+    shelf_status: bool | None= Field(default=None,description="上架状态")
 
 # 将 GET 方法和根路径 / 关联到下面的函数。
 @app.get("/")
@@ -69,10 +84,8 @@ def count_products():
 
 @app.get("/products/{product_id}")
 def read_product(product_id: int = Path(gt = 0)):
-    for product in products:
-        if product["id"] == product_id:
-            return product
-    return None
+    
+    return get_product_or_404(product_id)
 
 @app.get("/products")
 def list_products(
@@ -116,7 +129,9 @@ def list_products(
 
 @app.post("/products")
 def create_product(payload:ProductCreate):
-    name = payload.name.strip()
+    """先检查商品名称是否为空，然后在检查分类id有没有"""
+    if payload:
+        name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400,detail="商品名称不能为空")
     id_exists = False
@@ -134,3 +149,55 @@ def create_product(payload:ProductCreate):
     }
     products.append(product)
     return product
+
+#对于增删改查没有这个商品id的,抛出异常,有的话即返回那个item
+def get_product_or_404(product_id: int)->dict:
+    for item in products:
+        if item["id"] == product_id:
+            return item
+    raise HTTPException(status_code=404,detail="商品不存在")
+
+# PATCH：只修改提交的字段
+@app.patch("/products/{product_id}")
+def update_product(payload: ProductUpdate,
+                   product_id:int = Path(gt=0)):
+    product = get_product_or_404(product_id)
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(status_code=400,detail="至少提交一个修改字段")
+    """
+changes.keys()    # 只要键：'name', 'stock', ...
+changes.values()  # 只要值：'巧克力', 50, ...
+changes.items()   # 键和值都要：('name', '巧克力'), ('stock', 50),
+"""
+    for field, value in changes.items():
+        if value is None:
+            raise HTTPException(status_code=400,detail=f"字段{field}的值不允许为null")
+    if "name" in changes:
+        changes["name"] = changes["name"].strip()
+        if not changes["name"]:
+            raise HTTPException(status_code=400,detail="商品名称不能为空")
+       #原始写法
+        # if "categoriy_id" in changes:
+        #     category_id = changes["category_id"]
+        #     found = False
+        #     for category in categories:
+        #         if category["id"] == category_id:
+        #             found = True
+        #             break
+        #     if not False:
+        #         raise HTTPException(status_code=400,detail="商品分类不存在")
+            
+            
+                #通俗写法
+    if "category_id" in changes:
+        if not any( category["id"] == changes["category_id"] for category in categories):
+            raise HTTPException(status_code=400,detail="商品分类不存在")
+    product.update(changes)
+    return product
+
+@app.delete("/products/{product_id}")
+def delete_product(product_id: int = Path(gt=0)):
+    product = get_product_or_404(product_id)
+    products.remove(product)
+    return {"message":"商品删除成功"}
